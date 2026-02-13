@@ -1,18 +1,20 @@
-import { useRef, useMemo } from 'react'
-import { Point, Points, PointMaterial, shaderMaterial, OrbitControls, useTexture } from '@react-three/drei'
+import { useRef, useMemo, useState } from 'react'
+import { Point, Points, PointMaterial, shaderMaterial, OrbitControls, useTexture, Wireframe } from '@react-three/drei'
 //using this in the experience but can be wherever...
 import { button, useControls } from 'leva'
 import { Perf } from 'r3f-perf'
-import { Color, IcosahedronGeometry } from 'three'
-import { extend, useFrame } from '@react-three/fiber'
+import { Color, IcosahedronGeometry, Uniform } from 'three'
+import { extend, useFrame, useThree } from '@react-three/fiber'
 
 // maybe dont need lights at all? Stylistic thing.
 import Lights from './Lights.jsx'
 
 import grassVertexShader from './shaders/grass/vertex.glsl'
 import grassFragmentShader from './shaders/grass/fragment.glsl'
-import dandelionVertexShader from './shaders/dandelion/vertex.glsl'
-import dandelionFragmentShader from './shaders/dandelion/fragment.glsl'
+
+
+import Dandelion from './Dandelion.jsx'
+import DandelionGPGPU from './DandelionGPGPU.jsx'
 
 
 // drei helper to help with uniforms: takes 3 parameters: uniforms, vertex shader and fragment shader- it creates a Class we can use in the jsx
@@ -29,68 +31,6 @@ const GrassMaterial = shaderMaterial(
 //to make the class we use extend:
 extend({ GrassMaterial })
 
-const DandelionMaterial = shaderMaterial(
-    {
-        uColor: new Color('#eafdce'),
-        uTime: 0,
-        transparent: true,
-        depthWrite: false,
-        // sizeAttenuation needs to be calc in the shader
-    },
-    dandelionVertexShader,
-    dandelionFragmentShader 
-)
-extend({ DandelionMaterial })
-
-// make a dandelion... 
-function Dandelion() {
-    //I nee a geometry to get the vertices from:
-    const geometry = useMemo(() => new IcosahedronGeometry(0.5, 3));
-    // console.log(geometry);
-    const positionsArray = useMemo(() => geometry.attributes.position.array, [geometry])
-    // console.log(positionsArray)
-    // shatter the dandelion: 
-
-    function shatter() 
-    {
-        console.log('shatter!')
-    }
-
-    return (
-        <group position={[0, 1.5, 0]} onPointerDown={ shatter }>
-            <mesh visible={ true } 
-            position={ [0, - 0.04, 0 ] }
-            >
-                <sphereGeometry 
-                args={ [ 0.14, 10, 3, Math.PI * 0.00,  Math.PI * 2.00, Math.PI * 0.00, Math.PI * 0.60 ]}
-                />
-                <meshBasicMaterial 
-                    color={ '#248424' }
-                    // opacity={ 0.5 }
-                    // transparent={ true }
-                />
-            </mesh>
-            <mesh visible={ true } position={ [0, - 0.5, 0 ] }
->
-                <cylinderGeometry 
-                args={ [ 0.04, 0.04, 1, 8]}
-                />
-                <meshBasicMaterial 
-                    color={ '#248424' }
-                    // opacity={ 0.5 }
-                    // transparent={ true }
-                />
-            </mesh>
-
-            <Points positions={ positionsArray } >
-                <dandelionMaterial />
-            </Points>
-
-        </group>
-    )
-}
-
-
 
 export default function Experience()
 {
@@ -99,17 +39,20 @@ export default function Experience()
     // console.log(perlinTexture)
 
     const grassMaterial = useRef()
-    const dandelionMaterial = useRef()
 
-    useFrame((state, delta) => {
+    //gl is the renderer!
+    const { gl } = useThree()
+    // console.log(gl)
+    
+    // useFrame has state and delta:
+    useFrame((_, delta) => {
         // console.log(delta);
-        grassMaterial.current.uTime += delta
-        
+        grassMaterial.current.uTime += delta;  
     })
     
     //instantiate leva's controls and pass it an object:
     const { perfVisible } = useControls({
-        perfVisible: true
+        perfVisible: true,
     })
     //for folders, add a string as a first property:
     const sphereControls = useControls('sphere', {
@@ -148,8 +91,10 @@ export default function Experience()
         <OrbitControls makeDefault />
 
         <Lights />
+        {/* this needs to be conditional on something - multiple and the position randomised  Remember disposal though (esp of the memoized geometry)- if its not done by r3f???? */}
+        <Dandelion position={ [- 4, 1.5, 4 ] } />
 
-        <Dandelion />
+        <DandelionGPGPU renderer={ gl }/>
         
         <mesh receiveShadow  rotation-x={ - Math.PI * 0.5 } scale={ 10 }>
             <planeGeometry args={[ 1, 1, 256, 256 ]}/>
