@@ -28,8 +28,9 @@ const DandelionMaterial = shaderMaterial(
 )
 extend({ DandelionMaterial });
 
+
 // make a dandelion... 
-export default function DandelionGPGPU( { renderer } ) 
+export default function DandelionGPGPU( { glRenderer } ) 
 {
     // I need a ref to be able to get to it to set stuff on it:
     const dandelionMaterial = useRef();
@@ -44,64 +45,85 @@ export default function DandelionGPGPU( { renderer } )
      */
 
     const baseGeometry = {};
+
     baseGeometry.instance = useMemo(() => new IcosahedronGeometry(0.5, 3));
+
     baseGeometry.count = baseGeometry.instance.attributes.position.count;
+    // console.log(baseGeometry.instance);
     // console.log(baseGeometry.count);
 
-
+    
     /**
      * GPGPU Computation
      */
 
     //Setup
-    //Memoizing all of it!
+    //Hopefully correctly in a useMemo for this?
     const gpgpu = {}
     
     // This defines the size of our texture. It needs to allow for all the points (on a 2d square...), so will need to round it up to a whole number (spare pixels dont matter)
     gpgpu.size = useMemo(() => 
         Math.ceil(Math.sqrt(baseGeometry.count)), [baseGeometry.count]
     )
-    //So in this case its just a 31x31 texture!
     // console.log(gpgpu.size)
-    gpgpu.computation = useMemo(() => 
-        new GPUComputationRenderer(gpgpu.size, gpgpu.size, renderer), [gpgpu.size, renderer]
-    )
-    // console.log(renderer)
+    // ...So in this case its just a 31x31 texture!
+    
+    //for control
+    const gpgpuRef = useRef()
 
-    // Base particles setup:
-    // createTexture is a method on the GPUComputationRenderer - it makes a DataTexture (see my brain-in-r3f?)
-    const baseParticlesTexture = useMemo(() => 
-        gpgpu.computation.createTexture(), [ gpgpu.computation ]
-    )
-    // console.log(baseParticlesTexture.image.data)- each set of 4 values will represent 1 particle
+    // so now instead of useMemos all are safely inside useEffect!!: And it works...
+    useEffect(() => {
+        // ...and belt and braces!!!:
+        if (gpgpuRef.current) return
 
-    //Particles 'variable' - addVariable requires a name, the shader, and the base texture
-    //the uParticles texture will be a sampler2d
-    gpgpu.particlesVariable = useMemo(() =>
-        gpgpu.computation.addVariable(
+        // need to provide the renderer (as prop) because there must only be the one per page! 
+        // The instance has to be a variable - not set on the gpgpu object - because I cant set it later otherwise, it didnt work. Need to fully understand WHY though.
+        const computation =  new GPUComputationRenderer(gpgpu.size, gpgpu.size, glRenderer)
+        // createTexture - a method on the GPUComputationRenderer - makes a DataTexture
+        const baseParticlesTexture = computation.createTexture()
+        // (each set of 4 values represents 1 particle)
+
+        // now need to loop and fill the texture... a whole new world of pain?
+
+
+
+
+
+
+        // Particles 'variable': addVariable requires a name, the shader, and the base texture (uParticles will be a sampler2d texture)
+        // this also injects the uniform into the shader (see my previous rubbishy effort that made it inject twice...)
+        const particlesVariable = computation.addVariable(
             'uParticles', 
             gpgpuParticlesShader, 
             baseParticlesTexture
-        ), 
-        [ gpgpu.computation, gpgpuParticlesShader, baseParticlesTexture ]
-    )
-    //set the dependencies on the Computation renderer - it needs the 'variable' and an array containing the dependencies (which in our case is just itself... there could be be more, though) this is effevctively sets up the loop to ping pong
-    useEffect(() =>
-        gpgpu.computation.setVariableDependencies(gpgpu.particlesVariable, [ gpgpu.particlesVariable ]), 
-        [ gpgpu.computation, gpgpu.particlesVariable ]
-    )
-    // Init: correct to be in a useEffect?
-    useEffect(() =>
-        gpgpu.computation.init,
-        [ gpgpu.computation ] 
-    ) 
-    // Run it: 
-    // In three this was in the tick function so useFrame?
-    useFrame(() => 
-        gpgpu.computation.compute()
-    )
-    
-    
+        ) 
+
+        // setting up the stuff to ping-pong
+        computation.setVariableDependencies(particlesVariable, [ particlesVariable ])
+
+        // and init (which I DID actually work out needed to go in a useEffect)
+        computation.init()
+
+        // we get the WebGLRenderTarget which handles the FBO (Frame Buffer Object)
+        console.log(computation.getCurrentRenderTarget(particlesVariable))
+        console.log(computation.getCurrentRenderTarget(particlesVariable).texture)
+        //oh yes this looks like an array of reds!!! 1, 0, 0, 0 a la Bruno lesson
+        // But.... how do I get it to use it elsewhere?? - via my gpgpuRef !!!!!!!! see jsx
+
+        // and set this to use....(chatgpt...)
+        gpgpuRef.current = { computation, particlesVariable }
+        console.log(gpgpuRef.current)
+        // Make sure it doesnt go again!!!..: (chatgpt)
+        return () => {
+        // Optional cleanup
+        // computation.dispose?.()
+        gpgpuRef.current = null
+        }
+        
+    }, [glRenderer])
+
+
+   
     /** 
      * Seeds
      */
@@ -132,6 +154,13 @@ export default function DandelionGPGPU( { renderer } )
         // console.log(dandelionMaterial.current.uShatter)
     }
 
+
+    // In three this was in the tick function so useFrame:
+    useFrame(() => 
+        // and checking its threre as well as running it
+        gpgpuRef.current?.computation.compute()
+    )
+
     return (
         <group position={[0, 1.5, 0]} >
             <mesh visible={ true } 
@@ -158,8 +187,18 @@ export default function DandelionGPGPU( { renderer } )
                 <dandelionMaterial ref={ dandelionMaterial } />
             </Points>
 
+            {/* debug mesh */}
+            <mesh>
+                <planeGeometry args={[ 3, 3 ]} />
+                {/* use map to apply the texture... yeeeeessss!!!!!!! Note that without .current? check its undefined */ }
+                <meshBasicMaterial map={ gpgpuRef.current?.computation.getCurrentRenderTarget(gpgpuRef.current?.particlesVariable).texture} />
+            </mesh>
+
         </group>
     )
 }
 
 
+//---------------------------------------------------------------------
+// Nuclear option of working it out by attempting to write it manually instead of using GPUComputation renderer - 
+// see https://medium.com/@midnightdemise123/creating-chaotic-flow-fields-with-gpgpu-in-react-three-fiber-f9aad608c534  for an example. Also Bruno mentions he wrote his own.

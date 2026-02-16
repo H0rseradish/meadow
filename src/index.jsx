@@ -9,7 +9,8 @@ import { Leva } from 'leva'
 const root = ReactDOM.createRoot(document.querySelector('#root'))
 
 root.render(
-    <StrictMode>
+    <>
+    {/* <StrictMode> */}
         {/* By adding Leva here we get access to its attributes like collapsed docs at https://github.com/pmndrs/leva/blob/main/docs/configuration.md */}
         <Leva collapsed />
         <Canvas
@@ -26,5 +27,6 @@ root.render(
             </Suspense>
             
         </Canvas>
-    </StrictMode>
+    {/* </StrictMode> */}
+    </>
 )
