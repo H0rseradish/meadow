@@ -10,7 +10,7 @@ const root = ReactDOM.createRoot(document.querySelector('#root'))
 
 root.render(
     <>
-    {/* <StrictMode> */}
+    <StrictMode>
         {/* By adding Leva here we get access to its attributes like collapsed docs at https://github.com/pmndrs/leva/blob/main/docs/configuration.md */}
         <Leva collapsed />
         <Canvas
@@ -22,11 +22,12 @@ root.render(
                 position: [0, 2.5, 10 ]
             } }
         >
+            {/* <color attach="background" args={['#000000']} /> */}
             <Suspense>
                 <Experience />
             </Suspense>
             
         </Canvas>
-    {/* </StrictMode> */}
+    </StrictMode>
     </>
 )
