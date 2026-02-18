@@ -2,8 +2,8 @@ void main()
 {
     vec2 uv = gl_FragCoord.xy / resolution.xy;
 
-    vec4 particle = texture(uParticles, uv);
-    // particle.y += 0.01;
+    vec4 particle = texture(uSeedParticles, uv);
+    particle.x += 0.001;
 
 
 

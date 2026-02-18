@@ -1,20 +1,27 @@
 uniform float uTime;
 uniform float uProgress;
+uniform sampler2D uSeedParticlesTexture;
+
+attribute vec2 aSeedParticlesUv;
+
 varying vec2 vUv;
+
 
 void main()
 {
-    vec4 modelPosition = modelMatrix * vec4(position, 1.0);
+    vec4 seedParticle = texture(uSeedParticlesTexture, aSeedParticlesUv);
 
+    //use our new seedParticle instead of the standard position
+    vec4 modelPosition = modelMatrix * vec4(seedParticle.xyz, 1.0);
 
     vec4 viewPosition = viewMatrix * modelPosition;
     vec4 projectedPosition = projectionMatrix * viewPosition;
 
     // Animate seedheads
-    if(uProgress == 1.0) 
+    // if(uProgress == 1.0) 
     // (using the uniform value (YES THISSSS!!), or would it just be a boolean as a condition??)
     //if use uProgress can be given a value, 0 or 1, and just added in - if its 0 it doesn't happen... this must be why never see Bruno using bool types? wait if it is 
-    projectedPosition.x += uTime * 0.5;
+    // projectedPosition.x += uTime * 0.5;
     // uTime will needs to be randomised then smoothstepped, positions also ...
     //.... but the movement for each particle will continue in that direction... bso.. will randomised be adequately? it will be one thing through time even if randomised. To change the direction not just per particle, BUT ALSO through time I will need to use flow field gpgpu technique?
 

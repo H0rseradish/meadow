@@ -11,15 +11,16 @@ import { GPUComputationRenderer } from 'three/examples/jsm/Addons.js'
 import seedsVertexShader from './shaders/seeds/vertex.glsl'
 import seedsFragmentShader from './shaders/seeds/fragment.glsl'
 import gpgpuParticlesShader from './shaders/gpgpu/particles.glsl'
+import { StaticElement } from 'three/examples/jsm/transpiler/AST.js'
 // console.log(gpgpuParticlesShader)
 
 // this is naive???? maybe its fine.
 // sebastien lempens (see link below) uses memo() and forwardRef, and returns jsx... but he is making an actual component so...
-const ParticlesMaterial = shaderMaterial(
+const SeedParticlesMaterial = shaderMaterial(
     {
         uColor: new Color('#eafdce'),
         uTime: 0,
-        uParticlesTexture:{ value: null },
+        uSeedParticlesTexture:{ value: null },
         //Dont use a boolean, use a progress value for this!!!!! see shader comments...
         uProgress: 0,
         // swap true and false below to get the shapes back...
@@ -30,14 +31,14 @@ const ParticlesMaterial = shaderMaterial(
     seedsVertexShader,
     seedsFragmentShader 
 )
-extend({ ParticlesMaterial });
+extend({ SeedParticlesMaterial });
 
 
 // make a dandelion... 
 export default function DandelionGPGPU( { glRenderer } ) 
 {
     // I need a ref to be able to get to it to set stuff on it:
-    const particlesMaterialRef = useRef(null);
+    const seedParticlesMaterialRef = useRef(null);
 
     useFrame((state, delta) => {
         // console.log(delta);
@@ -118,7 +119,7 @@ export default function DandelionGPGPU( { glRenderer } )
         // Particles 'variable': addVariable requires a name, the shader, and the base texture (uParticles will be a sampler2d texture)
         // this also injects the uniform into the shader (see my previous rubbishy effort that made it inject twice...)
         const particlesVariable = computation.addVariable(
-            'uParticles', 
+            'uSeedParticles', 
             gpgpuParticlesShader, 
             baseParticlesTexture
         ) 
@@ -174,6 +175,8 @@ export default function DandelionGPGPU( { glRenderer } )
     }
     // console.log(seedsUvArray)
 
+    // This seeds stuff all needs tidying?? into one useMemo? 
+    // YES to avoid issues ....(I am fairly certain....?):
 
     //creating a new EMPTY geometry
     seeds.geometry = useMemo(() => new BufferGeometry());
@@ -181,7 +184,7 @@ export default function DandelionGPGPU( { glRenderer } )
     seeds.geometry.setDrawRange(0, baseGeometry.count)
     console.log(seeds.geometry);
     // CHECK: Disposal? - BECAUSE ITS A THREE GEOMETRY???, and also get rid of unnecessary attributes???
-    seeds.geometry.setAttribute('aSeedsUv', new BufferAttribute(seedsUvArray, 2))
+    seeds.geometry.setAttribute('aSeedParticlesUv', new BufferAttribute(seedsUvArray, 2))
     console.log(seeds.geometry)
 
     // but I dont need the below? BECAUSE ITS ALREADY A GEOMETRY!!! Yes I do though because of the positions for the shader - (passing the geometry in the jsx doesnt work)
@@ -202,7 +205,7 @@ export default function DandelionGPGPU( { glRenderer } )
         // because I have the ref can do this - DO NOT NEED useState!!!
         // set the boolean uniform REMEMBER CURRENT!!!!!!!!!!!! It works now.
         // NOO, a Value not a boolean is more useful!
-        particlesMaterialRef.current.uProgress = 1;
+        seedParticlesMaterialRef.current.uProgress = 1;
         // console.log(dandelionMaterial.current.uShatter)
     }
 
@@ -211,10 +214,14 @@ export default function DandelionGPGPU( { glRenderer } )
     useFrame(() => {
         // and checking its there as well as running it
         gpgpuRef.current?.computation.compute()
-        // god is this right? Its not erroring...:
-        ParticlesMaterial.uParticlesTexture = gpgpuRef.current?.computation.getCurrentRenderTarget(gpgpuRef.current?.particlesVariable).texture 
+        // But can use the Ref!! As above - The CURRENT state
+        // Yes this works too!!!!!:
+        seedParticlesMaterialRef.current.uSeedParticlesTexture = gpgpuRef.current?.computation.getCurrentRenderTarget(gpgpuRef.current?.particlesVariable).texture 
         ///wooooooooooooo!!!! I think/I hope...??????????????
-        // console.log(ParticlesMaterial.uParticlesTexture)
+        // below worked, but should be the ref not the CLASS ITSELF????
+        // Because my Ref is THE INSTANCE 
+        // (My original way was on the class (below)
+        // console.log(SeedParticlesMaterial.uSeedParticlesTexture)
     })
 
     return (
@@ -240,9 +247,9 @@ export default function DandelionGPGPU( { glRenderer } )
             </mesh>
             
             <points geometry={ seeds?.geometry }>
-                <particlesMaterial ref={ particlesMaterialRef }
+                <seedParticlesMaterial ref={ seedParticlesMaterialRef }
                 // this?....doesnt error but?: 
-                uParticlesTexture = { gpgpuRef.current?.computation.getCurrentRenderTarget(gpgpuRef.current?.particlesVariable).texture } />
+                uSeedParticlesTexture = { gpgpuRef.current?.computation.getCurrentRenderTarget(gpgpuRef.current?.particlesVariable).texture } />
             </points>
 
             {/* debug mesh */}
