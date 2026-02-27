@@ -41,8 +41,9 @@ export default function Experience()
     const grassMaterial = useRef()
 
     //gl is the renderer!
-    const { gl } = useThree()
+    const { gl, size } = useThree()
     // console.log(gl)
+    // console.log(size)
     
     // useFrame has state and delta:
     useFrame((_, delta) => {
@@ -94,7 +95,7 @@ export default function Experience()
         {/* this needs to be conditional on something - multiple and the position randomised  Remember disposal though (esp of the memoized geometry)- if its not done by r3f???? */}
         <Dandelion position={ [- 4, 1.5, 4 ] } />
 
-        <DandelionGPGPU glRenderer={ gl }/>
+        <DandelionGPGPU glRenderer={ gl } size={ size }/>
         
         <mesh receiveShadow  rotation-x={ - Math.PI * 0.5 } scale={ 10 }>
             <planeGeometry args={[ 1, 1, 256, 256 ]}/>

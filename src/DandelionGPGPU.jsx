@@ -1,17 +1,16 @@
 
 import { useRef, useMemo, useState, useEffect } from 'react'
-import { Point, Points, PointMaterial, shaderMaterial, OrbitControls, useTexture, Wireframe } from '@react-three/drei'
-//using this in the experience but can be wherever...
-import { button, useControls } from 'leva'
-
-import { Color, IcosahedronGeometry, BufferGeometry, BufferAttribute } from 'three'
+import { Point, Points, PointMaterial, shaderMaterial, useTexture, Wireframe } from '@react-three/drei'
+import { Color, IcosahedronGeometry, BufferGeometry, BufferAttribute, DoubleSide, Vector2 } from 'three'
 import { extend, useFrame } from '@react-three/fiber'
 import { GPUComputationRenderer } from 'three/examples/jsm/Addons.js'
+
+import { mergeVertices } from 'three/examples/jsm/utils/BufferGeometryUtils.js'
 
 import seedsVertexShader from './shaders/seeds/vertex.glsl'
 import seedsFragmentShader from './shaders/seeds/fragment.glsl'
 import gpgpuParticlesShader from './shaders/gpgpu/particles.glsl'
-import { StaticElement } from 'three/examples/jsm/transpiler/AST.js'
+
 // console.log(gpgpuParticlesShader)
 
 // this is naive???? maybe its fine.
@@ -20,12 +19,14 @@ const SeedParticlesMaterial = shaderMaterial(
     {
         uColor: new Color('#eafdce'),
         uTime: 0,
+        uResolution: { value: null },
         uSeedParticlesTexture:{ value: null },
         //Dont use a boolean, use a progress value for this!!!!! see shader comments...
         uProgress: 0,
         // swap true and false below to get the shapes back...
         transparent: true,
         depthWrite: false,
+        side: DoubleSide
         // sizeAttenuation needs to be calc in the shader
     },
     seedsVertexShader,
@@ -35,7 +36,7 @@ extend({ SeedParticlesMaterial });
 
 
 // make a dandelion... 
-export default function DandelionGPGPU( { glRenderer } ) 
+export default function DandelionGPGPU( { glRenderer, size } ) 
 {
     // I need a ref to be able to get to it to set stuff on it:
     const seedParticlesMaterialRef = useRef(null);
@@ -49,13 +50,21 @@ export default function DandelionGPGPU( { glRenderer } )
      * Base geometry
      */
 
-    const baseGeometry = {};
+    const baseGeometry = useMemo(() => 
+    {
+        const instance = new IcosahedronGeometry(0.5, 2)
 
-    baseGeometry.instance = useMemo(() => new IcosahedronGeometry(0.5, 3));
+        // This has done it????!!!!!! I think....!
+        const merged = mergeVertices(instance);
+        
+        const count = merged.attributes.position.count;
+        return{ count, merged }
+    });
 
-    baseGeometry.count = baseGeometry.instance.attributes.position.count;
+    // baseGeometry.count = baseGeometry.instance.attributes.position.count;
     // console.log(baseGeometry.instance);
-    // console.log(baseGeometry.count);
+    console.log(baseGeometry.merged);
+    
     // console.log(baseGeometry.instance.attributes.position.array);
 
     // https://github.com/sebastien-lempens/r3f-flow-field-particles/blob/main/src/components/FlowFieldParticles.jsx
@@ -106,11 +115,11 @@ export default function DandelionGPGPU( { glRenderer } )
             const i3 = i * 3
             const i4 = i * 4
             // r channel
-            baseParticlesTexture.image.data[i4 + 0] = baseGeometry.instance.attributes.position.array[i3 + 0]
+            baseParticlesTexture.image.data[i4 + 0] = baseGeometry.merged.attributes.position.array[i3 + 0]
             // g channel
-            baseParticlesTexture.image.data[i4 + 1] = baseGeometry.instance.attributes.position.array[i3 + 1]
+            baseParticlesTexture.image.data[i4 + 1] = baseGeometry.merged.attributes.position.array[i3 + 1]
             // b channel
-            baseParticlesTexture.image.data[i4 + 2] = baseGeometry.instance.attributes.position.array[i3 + 2]
+            baseParticlesTexture.image.data[i4 + 2] = baseGeometry.merged.attributes.position.array[i3 + 2]
             // fill alpha with 0s:
             baseParticlesTexture.image.data[i4 + 3] = 0
         }
@@ -153,11 +162,12 @@ export default function DandelionGPGPU( { glRenderer } )
      * Seeds(particles)
      */
 
-    const seeds = {};
 
     // how to pick from the particles(seeds) texture:
     const seedsUvArray = useMemo(() => new Float32Array(baseGeometry.count * 2))
-    // fill the array - this should be memoised or what?
+    const randomsArray = useMemo(() => new Float32Array(baseGeometry.count))
+
+    // fill the arrays - this should be memoised or what? Not???
     for(let y = 0; y < gpgpu.size; y++)
     {
         for(let x = 0; x < gpgpu.size; x++) 
@@ -171,27 +181,32 @@ export default function DandelionGPGPU( { glRenderer } )
             // console.log(uvX)
             seedsUvArray[i2 + 0] = uvX;
             seedsUvArray[i2 + 1] = uvY;
+
+            randomsArray[i] = Math.random()
         }
     }
     // console.log(seedsUvArray)
 
     // This seeds stuff all needs tidying?? into one useMemo? 
     // YES to avoid issues ....(I am fairly certain....?):
+    // copying some structure from sebastien-lempens
+    const seeds = useMemo(() => {
 
-    //creating a new EMPTY geometry
-    seeds.geometry = useMemo(() => new BufferGeometry());
-    // giving it the correct 
-    seeds.geometry.setDrawRange(0, baseGeometry.count)
-    console.log(seeds.geometry);
-    // CHECK: Disposal? - BECAUSE ITS A THREE GEOMETRY???, and also get rid of unnecessary attributes???
-    seeds.geometry.setAttribute('aSeedParticlesUv', new BufferAttribute(seedsUvArray, 2))
-    console.log(seeds.geometry)
+        const geometry =  new BufferGeometry()
+        geometry.setDrawRange(0, baseGeometry.count )
+
+        geometry.setAttribute('aSeedParticlesUv', new BufferAttribute(seedsUvArray, 2))
+        geometry.setAttribute('aRandom', new BufferAttribute(randomsArray, 1))
+
+        return { geometry }
+    })
+    // console.log(seeds.geometry)
+
 
     // but I dont need the below? BECAUSE ITS ALREADY A GEOMETRY!!! Yes I do though because of the positions for the shader - (passing the geometry in the jsx doesnt work)
-    seeds.points = useMemo(() => baseGeometry.instance.attributes.position.array, [baseGeometry.instance]);
+    seeds.points = useMemo(() => baseGeometry.merged.attributes.position.array, [baseGeometry.merged]);
     // console.log(positionsArray)
 
-    
 
     // shatter the dandelion: 
     const seedheadShatter = (event) =>
@@ -226,7 +241,7 @@ export default function DandelionGPGPU( { glRenderer } )
 
     return (
         <group position={[0, 1.5, 0]} >
-            <mesh visible={ false } 
+            <mesh visible={ true } 
             position={ [0, - 0.04, 0 ] }
             >
                 <sphereGeometry 
@@ -236,7 +251,7 @@ export default function DandelionGPGPU( { glRenderer } )
                     color={ '#6cf66c' }
                 />
             </mesh>
-            <mesh visible={ false } position={ [0, - 0.5, 0 ] }
+            <mesh visible={ true } position={ [0, - 0.5, 0 ] }
             >
                 <cylinderGeometry 
                 args={ [ 0.04, 0.04, 1, 8]}
@@ -245,24 +260,37 @@ export default function DandelionGPGPU( { glRenderer } )
                     color={ '#248424' }
                 />
             </mesh>
-            
-            <points geometry={ seeds?.geometry }>
+
+            <points geometry={ seeds?.geometry } >
                 <seedParticlesMaterial ref={ seedParticlesMaterialRef }
+                uResolution = { [ size?.width, size?.height ] }
                 // this?....doesnt error but?: 
                 uSeedParticlesTexture = { gpgpuRef.current?.computation.getCurrentRenderTarget(gpgpuRef.current?.particlesVariable).texture } />
             </points>
 
-            {/* debug mesh */}
+            {/* debug meshes */}
             <mesh position={[3, 0, 0]}>
-                <planeGeometry args={[ 3, 3 ]} />
+                <planeGeometry args={[ 3, 3 ]}/>
                 {/* use map to apply the texture... yeeeeessss!!!!!!! Note that without .current? check its undefined */ }
                 <meshBasicMaterial map={ gpgpuRef.current?.computation.getCurrentRenderTarget(gpgpuRef.current?.particlesVariable).texture } />
+            </mesh>
+
+            {/* to understand the icosahedron shape/vertices: */}
+            <mesh visible={ false } position={ [-1.5, 1.5, 0 ] }
+            >
+                <icosahedronGeometry 
+                args={ [ 1, 0 ]}
+                />
+                <meshBasicMaterial 
+                    color={ '#622484' }
+                    wireframe={ true }
+                />
             </mesh>
 
         </group>
     )
 }
-
+``
 
 //---------------------------------------------------------------------
 // Nuclear option of working it out by attempting to write it manually instead of using GPUComputation renderer - 
