@@ -1,7 +1,7 @@
 
 import { useRef, useMemo, useState, useEffect } from 'react'
 import { Point, Points, PointMaterial, shaderMaterial, useTexture, Wireframe } from '@react-three/drei'
-import { Color, IcosahedronGeometry, BufferGeometry, BufferAttribute, DoubleSide, Vector2 } from 'three'
+import { Color, IcosahedronGeometry, BufferGeometry, BufferAttribute, DoubleSide, Uniform } from 'three'
 import { extend, useFrame } from '@react-three/fiber'
 import { GPUComputationRenderer } from 'three/examples/jsm/Addons.js'
 
@@ -18,7 +18,7 @@ import gpgpuParticlesShader from './shaders/gpgpu/particles.glsl'
 const SeedParticlesMaterial = shaderMaterial(
     {
         uColor: new Color('#eafdce'),
-        uTime: 0,
+        // uTime: 0,
         uResolution: { value: null },
         uSeedParticlesTexture:{ value: null },
         //Dont use a boolean, use a progress value for this!!!!! see shader comments...
@@ -27,7 +27,7 @@ const SeedParticlesMaterial = shaderMaterial(
         transparent: true,
         depthWrite: false,
         side: DoubleSide
-        // sizeAttenuation needs to be calc in the shader
+        // sizeAttenuation must be calculated in the shader
     },
     seedsVertexShader,
     seedsFragmentShader 
@@ -41,18 +41,14 @@ export default function DandelionGPGPU( { glRenderer, size } )
     // I need a ref to be able to get to it to set stuff on it:
     const seedParticlesMaterialRef = useRef(null);
 
-    useFrame((state, delta) => {
-        // console.log(delta);
-        // dandelionMaterial.current.uTime += delta;
-    })
-
+    
     /**
      * Base geometry
      */
 
     const baseGeometry = useMemo(() => 
     {
-        const instance = new IcosahedronGeometry(0.5, 2)
+        const instance = new IcosahedronGeometry(0.6, 3)
 
         // This has done it????!!!!!! I think....!
         const merged = mergeVertices(instance);
@@ -62,8 +58,8 @@ export default function DandelionGPGPU( { glRenderer, size } )
     });
 
     // baseGeometry.count = baseGeometry.instance.attributes.position.count;
-    // console.log(baseGeometry.instance);
-    console.log(baseGeometry.merged);
+    // console.log(baseGeometry.count);
+    // console.log(baseGeometry.merged);
     
     // console.log(baseGeometry.instance.attributes.position.array);
 
@@ -135,6 +131,13 @@ export default function DandelionGPGPU( { glRenderer, size } )
 
         // setting up the stuff to ping-pong
         computation.setVariableDependencies(particlesVariable, [ particlesVariable ])
+
+        //Uniforms
+        // Was it just that I hadnt put in the object tpe??? YES YOU TWAAAAAAAAT YOU DIDNT GIVE IT AN OBJECT
+        // So instead of Bruno instantianting a new Three Uniform as the value I just had to pass it an object
+        particlesVariable.material.uniforms.uTime = { value: 0 };
+        // console.log(particlesVariable.material.uniforms.uTime)
+        particlesVariable.material.uniforms.uProgress = {value: 0}
 
         // and init (which I DID actually work out needed to go in a useEffect)
         computation.init()
@@ -212,21 +215,23 @@ export default function DandelionGPGPU( { glRenderer, size } )
     const seedheadShatter = (event) =>
     {
         console.log('shatter!'); //OK but.. WHY SO MANY ????? - Because the ray is going through multiple objects..... 
-        console.log(event);
+        // console.log(event);
         // THIS!!!!!!! (It's really important because the ray intersects 100s of things!!!)
         event.stopPropagation();
         //ok but why is the target bigger than the visible mesh??? What if I made an invisible sphere clickable?? meshBounds from Drei
         
         // because I have the ref can do this - DO NOT NEED useState!!!
         // set the boolean uniform REMEMBER CURRENT!!!!!!!!!!!! It works now.
-        // NOO, a Value not a boolean is more useful!
-        seedParticlesMaterialRef.current.uProgress = 1;
+        // NOO, a Value not a boolean is more useful??
+        // seedParticlesMaterialRef.current.uProgress = 1;
         // console.log(dandelionMaterial.current.uShatter)
+        gpgpuRef.current.particlesVariable.material.uniforms.uProgress.value = 1
+        console.log(gpgpuRef.current.particlesVariable.material.uniforms.uProgress.value)
     }
 
 
     // In three this was in the tick function so useFrame:
-    useFrame(() => {
+    useFrame((_, delta) => {
         // and checking its there as well as running it
         gpgpuRef.current?.computation.compute()
         // But can use the Ref!! As above - The CURRENT state
@@ -237,10 +242,25 @@ export default function DandelionGPGPU( { glRenderer, size } )
         // Because my Ref is THE INSTANCE 
         // (My original way was on the class (below)
         // console.log(SeedParticlesMaterial.uSeedParticlesTexture)
+
+        // ok this is getting Nan so its wrong...
+        // gpgpuRef.current.uTime += delta;
+        // console.log(gpgpuRef.current.uTime)
+
+        //this gets the time but Im not passing it onwards correctly?
+        // seedParticlesMaterialRef.current.uTime += delta;
+        // console.log(seedParticlesMaterialRef.current.uTime)
+
+        //what about:
+        // console.log(gpgpuRef.current.particlesVariable.material.uniforms.uTime)
+        // yes this is getting it but how do I pass it on...? Its only ever 0 in the shader...
+        // Because it need to be an object with a{ value: value} pair!!!!!!!!!!!!!!!
+        gpgpuRef.current.particlesVariable.material.uniforms.uTime.value += delta;
     })
 
+
     return (
-        <group position={[0, 1.5, 0]} >
+        <group position={[0, 1.5, 0]} onClick={ seedheadShatter }>
             <mesh visible={ true } 
             position={ [0, - 0.04, 0 ] }
             >
@@ -261,28 +281,29 @@ export default function DandelionGPGPU( { glRenderer, size } )
                 />
             </mesh>
 
-            <points geometry={ seeds?.geometry } >
+            <points geometry={ seeds?.geometry }>
                 <seedParticlesMaterial ref={ seedParticlesMaterialRef }
                 uResolution = { [ size?.width, size?.height ] }
                 // this?....doesnt error but?: 
-                uSeedParticlesTexture = { gpgpuRef.current?.computation.getCurrentRenderTarget(gpgpuRef.current?.particlesVariable).texture } />
+                uSeedParticlesTexture={ gpgpuRef.current?.computation.getCurrentRenderTarget(gpgpuRef.current?.particlesVariable).texture } 
+                />
             </points>
 
             {/* debug meshes */}
-            <mesh position={[3, 0, 0]}>
+            <mesh position={[3, 0, 0]} visible={ false }
+            >
                 <planeGeometry args={[ 3, 3 ]}/>
                 {/* use map to apply the texture... yeeeeessss!!!!!!! Note that without .current? check its undefined */ }
                 <meshBasicMaterial map={ gpgpuRef.current?.computation.getCurrentRenderTarget(gpgpuRef.current?.particlesVariable).texture } />
             </mesh>
 
             {/* to understand the icosahedron shape/vertices: */}
-            <mesh visible={ false } position={ [-1.5, 1.5, 0 ] }
+            <mesh visible={ false } 
             >
                 <icosahedronGeometry 
-                args={ [ 1, 0 ]}
+                args={ [ 0.6, 0 ]}
                 />
                 <meshBasicMaterial 
-                    color={ '#622484' }
                     wireframe={ true }
                 />
             </mesh>

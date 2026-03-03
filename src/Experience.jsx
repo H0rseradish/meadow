@@ -93,7 +93,7 @@ export default function Experience()
 
         <Lights />
         {/* this needs to be conditional on something - multiple and the position randomised  Remember disposal though (esp of the memoized geometry)- if its not done by r3f???? */}
-        <Dandelion position={ [- 4, 1.5, 4 ] } />
+        {/* <Dandelion position={ [- 4, 1.5, 4 ] } /> */}
 
         <DandelionGPGPU glRenderer={ gl } size={ size }/>
         

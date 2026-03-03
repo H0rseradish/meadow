@@ -19,10 +19,10 @@ root.render(
                 fov: 45,
                 near: 0.01,
                 far: 200,
-                position: [0, 2.5, 10 ]
+                position: [0, 3, 8 ]
             } }
         >
-            {/* <color attach="background" args={['#000000']} /> */}
+            <color attach="background" args={['#122455']} />
             <Suspense>
                 <Experience />
             </Suspense>

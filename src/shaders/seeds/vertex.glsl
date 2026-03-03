@@ -13,7 +13,7 @@ void main()
 {
     vec4 seedParticle = texture(uSeedParticlesTexture, aSeedParticlesUv);
 
-    seedParticle.xyz += aRandom * 0.9;
+    // seedParticle.xyz += aRandom * 0.9;
     //this is a wrong approach, BUT it revealed the indexing issue!.... there can be 6 particles at each position (vertex)!!!! see Brunos particles morphing lesson to solve
 
     //use our new seedParticle instead of the standard position
