@@ -16,10 +16,10 @@ root.render(
         <Canvas
             shadows
             camera={ {
-                fov: 45,
-                near: 0.01,
-                far: 200,
-                position: [0, 3, 8 ]
+                fov: 50,
+                near: 0.0001,
+                far: 300,
+                position: [0, 2.8, 7 ]
             } }
         >
             <color attach="background" args={['#122455']} />

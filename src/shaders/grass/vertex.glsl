@@ -13,13 +13,15 @@ void main()
     float uGrassFrequency = 50.0;
     float uGrassTipsOffset = 0.07;
 
+    // NB!!!!!
+    // Its only ok to do all the displacemnt on the modelPosition if the grass component isnt translated in any way: the displacement is attached to the world view here not the local space, so.... the alternative way is to just displace on the xyz (swizzle) not the W which is the translation. Then apply the translation, ie the entire modelMatrix xyzw thing later
     vec4 modelPosition = modelMatrix * vec4(position, 1.0);
 
 
     // Elevation
     
     // what about picking from a random texture instead of this function? This only happens once though so...
-    uGrassElevation += abs(simplexNoise2d(modelPosition.xz) * 0.65)  ;
+    uGrassElevation += abs(simplexNoise2d(modelPosition.xz) * 0.65);
     //need to randomise the frequency too?
 
     // Elevation: dont need the bottom of the sine wave so...

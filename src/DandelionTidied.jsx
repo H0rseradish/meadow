@@ -12,7 +12,7 @@ import gpgpuParticlesShader from './shaders/gpgpu/particles.glsl'
 
 // is this ok here? maybe its fine.
 // sebastien lempens (see link below) uses memo() and forwardRef...?
-const SeedParticlesMaterial = shaderMaterial(
+const ParticlesMaterial = shaderMaterial(
     {
         uColor: new Color('#eafdce'),
         // uTime: 0,
@@ -28,52 +28,51 @@ const SeedParticlesMaterial = shaderMaterial(
     seedsVertexShader,
     seedsFragmentShader 
 )
-extend({ SeedParticlesMaterial });
+extend({ ParticlesMaterial });
 
 
 // provide the renderer as prop (should only be one renderer)
 export default function DandelionGPGPU( { glRenderer, size, position } ) 
 {
     // Setting up useRefs to set stuff on:
-    const seedParticlesMaterialRef = useRef(null);
+    const particlesMaterialRef = useRef(null);
     const gpgpuRef = useRef(null)
 
     /**
      * Base geometry
      */
-
     const baseGeometry = useMemo(() => 
     {
+        // Make an instance of a geometry from which can obtain the vertices:
         const instance = new IcosahedronGeometry(0.6, 3)
-        // mergeVertices gets rid of multiple duplication of positions for the vertices shared by multiple triangles:
-        const merged = mergeVertices(instance);
-        
-        const count = merged.attributes.position.count;
-        return{ count, merged }
+        // Use mergeVertices to get rid of multiples of vertices coordinates at positions:
+        const mergedInstance = mergeVertices(instance);
+        const count = mergedInstance.attributes.position.count;
+
+        // return the count of the vertices and their positions:
+        return{ count, mergedInstance }
     });
 
     /**
      * GPGPU Computation
      */
 
-    //Setup
-    //Hopefully correctly in a useMemo for this?
-    const gpgpu = {}
-    
+    // Setup
     // Defines size of the invisible pingpong texture. Needs to contain all the points (as a 2d square), so will need to round it up to whole number (spare pixels dont matter)
-    gpgpu.size = useMemo(() => 
+    const gpgpuSize = useMemo(() => 
         Math.ceil(Math.sqrt(baseGeometry.count)), [baseGeometry.count]
     )
+    // console.log(gpgpuSize)
 
     // so now instead of useMemos all are safely inside a useEffect: 
     useEffect(() => {
         // belt and braces:
         if (gpgpuRef.current) return
 
-        const computation =  new GPUComputationRenderer(gpgpu.size, gpgpu.size, glRenderer)
+        const computationRenderer =  new GPUComputationRenderer(gpgpuSize, gpgpuSize, glRenderer)
 
         // createTexture - a method on the GPUComputationRenderer - makes a DataTexture
-        const baseParticlesTexture = computation.createTexture();
+        const baseParticlesTexture = computationRenderer.createTexture();
         // each set of FOUR values in here represents 1 particle:
         // console.log(baseParticlesTexture.image.data)
 
@@ -85,23 +84,23 @@ export default function DandelionGPGPU( { glRenderer, size, position } )
             const i3 = i * 3;
             const i4 = i * 4;
             // r,g, and b channels:
-            baseParticlesTexture.image.data[i4 + 0] = baseGeometry.merged.attributes.position.array[i3 + 0];
-            baseParticlesTexture.image.data[i4 + 1] = baseGeometry.merged.attributes.position.array[i3 + 1];
-            baseParticlesTexture.image.data[i4 + 2] = baseGeometry.merged.attributes.position.array[i3 + 2];
+            baseParticlesTexture.image.data[i4 + 0] = baseGeometry.mergedInstance.attributes.position.array[i3 + 0];
+            baseParticlesTexture.image.data[i4 + 1] = baseGeometry.mergedInstance.attributes.position.array[i3 + 1];
+            baseParticlesTexture.image.data[i4 + 2] = baseGeometry.mergedInstance.attributes.position.array[i3 + 2];
             // fill alpha with 0s: will need this channel later
             baseParticlesTexture.image.data[i4 + 3] = 0;
         }
         // console.log(baseParticlesTexture.image.data)
 
         // Particles 'variable': addVariable requires a name, shader, and base texture - injects the uniform sampler 2dinto the shader automatically:
-        const particlesVariable = computation.addVariable(
+        const particlesVariable = computationRenderer.addVariable(
             'uSeedParticles', 
             gpgpuParticlesShader, 
             baseParticlesTexture
         );
 
         // setting up the stuff to ping-pong
-        computation.setVariableDependencies(particlesVariable, [ particlesVariable ])
+        computationRenderer.setVariableDependencies(particlesVariable, [ particlesVariable ])
 
         // Set uniforms:
         
@@ -111,22 +110,21 @@ export default function DandelionGPGPU( { glRenderer, size, position } )
         particlesVariable.material.uniforms.uProgress = { value: 0 };
 
         // Init (before computing in the useFrame):
-        computation.init()
+        computationRenderer.init()
 
         // so we get the WebGLRenderTarget which handles the FBO (Frame Buffer Object)
-        console.log(computation.getCurrentRenderTarget(particlesVariable))
-        console.log(computation.getCurrentRenderTarget(particlesVariable).texture)
-        //oh yes this looks like an array of reds!!! 1, 0, 0, 0 a la Bruno lesson
+        console.log(computationRenderer.getCurrentRenderTarget(particlesVariable))
+        console.log(computationRenderer.getCurrentRenderTarget(particlesVariable).texture)
         // But.... how do I get it to use it elsewhere?? - via gpgpuRef
 
         // and set this to use these:
-        gpgpuRef.current = { computation, particlesVariable }
+        gpgpuRef.current = { computationRenderer, particlesVariable }
         // console.log(gpgpuRef.current)
 
         // Make sure it doesnt go again!!!..: (chatgpt)
         return () => {
         // Optional cleanup
-        // computation.dispose?.()
+        computationRenderer.dispose?.()
         gpgpuRef.current = null
         }
     }, [glRenderer]
@@ -139,46 +137,51 @@ export default function DandelionGPGPU( { glRenderer, size, position } )
     //TO  MEMOISE TIDILY? Two loops or one for both?
 
     // how to pick from the particles(seeds) texture:
-    const seedsUvArray = useMemo(() => new Float32Array(baseGeometry.count * 2))
-    const randomsArray = useMemo(() => new Float32Array(baseGeometry.count))
 
-    // fill the arrays - this should be memoised or what? YEEEEEEESSSSSSSS IT SHOULD!
-    for(let y = 0; y < gpgpu.size; y++)
-    {
-        for(let x = 0; x < gpgpu.size; x++) 
+    const { particlesUvArray, randomsArray }  = useMemo(() => {
+        const particlesUvArray = new Float32Array(baseGeometry.count * 2);
+        const randomsArray = new Float32Array(baseGeometry.count);
+
+        // fill the arrays - Bruno-style:
+        for(let y = 0; y < gpgpuSize; y++)
         {
-            const i = (y * gpgpu.size + x)
-            const i2 = i * 2
-            // but we need our values to go from 0 to 1 so: add 0.5 because bruno likes it to be centred on each 'cell':
-            const uvX = (x + 0.5) / gpgpu.size
-            const uvY = (y + 0.5) / gpgpu.size
-
-            // console.log(uvX)
-            seedsUvArray[i2 + 0] = uvX;
-            seedsUvArray[i2 + 1] = uvY;
-
-            randomsArray[i] = Math.random()
+            for(let x = 0; x < gpgpuSize; x++) 
+            {
+                const i = (y * gpgpuSize + x);
+                const i2 = i * 2;
+                // but we need our values to go from 0 to 1 so: add 0.5 because bruno likes it to be centred on each 'cell':
+                const uvX = (x + 0.5) / gpgpuSize;
+                const uvY = (y + 0.5) / gpgpuSize;
+                // console.log(uvX)
+                particlesUvArray[i2 + 0] = uvX;
+                particlesUvArray[i2 + 1] = uvY;
+                //fill with random values:
+                randomsArray[i] = Math.random();
+            }
         }
-    }
-    // console.log(seedsUvArray)
+        return { particlesUvArray, randomsArray }
+
+    }, [ baseGeometry.count, gpgpuSize ]);
+    // console.log(particlesUvArray)
 
     // Seeds geometry stuff tidied into one useMemo 
-    const seeds = useMemo(() => {
+    const particles = useMemo(() => {
 
-        const geometry =  new BufferGeometry()
+        const geometry = new BufferGeometry()
         geometry.setDrawRange(0, baseGeometry.count )
 
-        geometry.setAttribute('aSeedParticlesUv', new BufferAttribute(seedsUvArray, 2))
+        // TODO: Add Positions attribute? not having it caused a big issue in spatialstrates
+
+        geometry.setAttribute('aSeedParticlesUv', new BufferAttribute(particlesUvArray, 2))
         geometry.setAttribute('aRandom', new BufferAttribute(randomsArray, 1))
 
+        // what is this for?
+        // const points = baseGeometry.mergedInstance.attributes.position.array;
+
         return { geometry }
-    })
-    // console.log(seeds.geometry)
-
-
-    // but I dont need the below? BECAUSE ITS ALREADY A GEOMETRY!!! Yes I do though because of the positions for the shader - (passing the geometry in the jsx doesnt work) but memoising seeds.points?????
-    seeds.points = useMemo(() => baseGeometry.merged.attributes.position.array, [baseGeometry.merged]);
-    // console.log(positionsArray)
+    }, [ baseGeometry.count, particlesUvArray, randomsArray ])
+    // console.log(particles.geometry)
+    // console.log(particles.points)
 
 
     // shatter the dandelion: 
@@ -197,10 +200,11 @@ export default function DandelionGPGPU( { glRenderer, size, position } )
     // In three this was in the tick function so useFrame:
     useFrame((_, delta) => {
         // and checking its there as well as running it
-        gpgpuRef.current?.computation.compute();
+        // but this was bad... 
+        gpgpuRef.current?.computationRenderer.compute();
 
         // note using the ref (the ref is the INSTANCE, it was a mistake to do it on the class):
-        seedParticlesMaterialRef.current.uSeedParticlesTexture = gpgpuRef.current?.computation.getCurrentRenderTarget(gpgpuRef.current?.particlesVariable).texture; 
+        particlesMaterialRef.current.uSeedParticlesTexture = gpgpuRef.current?.computationRenderer.getCurrentRenderTarget(gpgpuRef.current?.particlesVariable).texture; 
         // (My original way was on the class (below)
         // console.log(SeedParticlesMaterial.uSeedParticlesTexture)
 
@@ -233,8 +237,8 @@ export default function DandelionGPGPU( { glRenderer, size, position } )
                 />
             </mesh>
 
-            <points geometry={ seeds?.geometry }>
-                <seedParticlesMaterial ref={ seedParticlesMaterialRef }
+            <points geometry={ particles?.geometry }>
+                <particlesMaterial ref={ particlesMaterialRef }
                 uResolution = { [ size?.width, size?.height ] }
                 // this?....doesnt error but?: I DONT NEED IT??? The value is passed in the useEffect above:
                 // uSeedParticlesTexture={ gpgpuRef.current?.computation.getCurrentRenderTarget(gpgpuRef.current?.particlesVariable).texture } 
@@ -242,15 +246,15 @@ export default function DandelionGPGPU( { glRenderer, size, position } )
             </points>
 
             {/* debug meshes */}
-            <mesh position={[3, 0, 0]} visible={ false }
+            <mesh position={[3, 0, 0]} visible={ true }
             >
                 <planeGeometry args={[ 3, 3 ]}/>
                 {/* use map to apply the texture... yeeeeessss!!!!!!! Note that without .current? check its undefined */ }
-                <meshBasicMaterial map={ gpgpuRef.current?.computation.getCurrentRenderTarget(gpgpuRef.current?.particlesVariable).texture } />
+                <meshBasicMaterial map={ gpgpuRef.current?.computationRenderer.getCurrentRenderTarget(gpgpuRef.current?.particlesVariable).texture } />
             </mesh>
 
             {/* to understand the icosahedron shape/vertices - and for clicking: */}
-            <mesh visible={ false }  onClick={ seedheadShatter }
+            <mesh visible={ false } onClick={ seedheadShatter }
             >
                 <icosahedronGeometry 
                 args={ [ 0.75, 0 ]}

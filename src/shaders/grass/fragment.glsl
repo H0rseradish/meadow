@@ -6,7 +6,7 @@ varying float vElevation;
 void main()
 {
     
-    vec3 color = mix(uGrassDepthsColor, uGrassTipsColor, vElevation * 0.4);
+    vec3 color = mix(uGrassDepthsColor, uGrassTipsColor, vElevation * 0.8);
 
     // Final color
     gl_FragColor = vec4(color, 1.0);

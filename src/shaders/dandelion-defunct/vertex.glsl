@@ -27,6 +27,6 @@ void main()
     // size attenuation:
     gl_PointSize *= 1.0 / - viewPosition.z;
 
-    //Varyings
+    // Varyings
     vUv = uv;
 }

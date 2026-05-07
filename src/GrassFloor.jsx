@@ -9,14 +9,14 @@ import { extend, useFrame, useThree } from '@react-three/fiber'
 // maybe dont need lights at all? Stylistic thing.
 import Lights from './Lights.jsx'
 
-import grassVertexShader from './shaders/grass/vertexrewrite.glsl'
+import grassVertexShader from './shaders/grass/vertex.glsl'
 import grassFragmentShader from './shaders/grass/fragment.glsl'
 
-import DandelionGPGPU from './DandelionTidied.jsx'
+import DandelionGPGPU from './DandelionGPGPU.jsx'
 
 
 // drei helper to help with uniforms: takes 3 parameters: uniforms, vertex shader and fragment shader- it creates a Class we can use in the jsx
-const GrassMaterial = shaderMaterial(
+const GrassFloorMaterial = shaderMaterial(
     {
         uTime: 0,
         uGrassDepthsColor: new Color('#090e01'),
@@ -27,16 +27,16 @@ const GrassMaterial = shaderMaterial(
     grassFragmentShader
 )
 //to make the class we use extend:
-extend({ GrassMaterial })
+extend({ GrassFloorMaterial })
 
 
-export default function Experience()
+export default function GrassFloor()
 {
     //note the file path to public...!!!!
     const perlinTexture = useTexture('/perlin.png')
     // console.log(perlinTexture)
 
-    const grassMaterial = useRef()
+    const grassFloorMaterial = useRef()
 
     //gl is the renderer!
     const { gl, size } = useThree()
@@ -51,32 +51,8 @@ export default function Experience()
         grassMaterial.current.uTime += delta;  
     })
     
-    //instantiate leva's controls and pass it an object:
-    const { perfVisible } = useControls({
-        perfVisible: true,
-    })
-    //for folders, add a string as a first property:
-    const sphereControls = useControls('sphere', {
-        position: {
-            //NB 2d as joystick doesnt make sense otherwise
-            value: { x: 0, y: 1.5},
-            min: - 4,
-            max: 4,
-            // step: 0.001
-            joystick: 'invertY'
-        },
-        scale: {
-            value: 0.5,
-            min: - 4,
-            max: 4,
-        },
-        visible: true,
-        // import button separately and use callback
-        clickMe: button(() => { console.log('ok') }),
-        choice: { options: [ 'a', 'b', 'c']}
-
-    })
-    // Leva: for a second folder need to instantiate controls again:
+    
+    // for a second folder need to instantiate controls again:
     // can destructure immediately, so no need for multiple variables containing controls... cubeControls could have been destructured... :
     const { grassDepthsColor, grassTipsColor } = useControls('grass', {
         grassDepthsColor: '#090e01',
@@ -117,7 +93,7 @@ export default function Experience()
         <DandelionGPGPU glRenderer={ gl } size={ size } position={[2.1, 1.7, -2.7]}/>
         
         <mesh receiveShadow  rotation-x={ - Math.PI * 0.5 } scale={ 10 }>
-            <planeGeometry args={[ 1, 1, 256, 256 ]}/>
+            <planeGeometry args={[ 2, 1, 512, 256 ]}/>
             {/* drei helper to make this class: see above code */}
             <grassMaterial 
                 ref={ grassMaterial } 
